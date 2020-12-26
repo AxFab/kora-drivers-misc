@@ -19,7 +19,8 @@
  */
 #include <kernel/core.h>
 #include <kernel/bus/pci.h>
-#include <kernel/cpu.h>
+#include <kernel/arch.h>
+#include <kernel/irq.h>
 
 #define VBOX_VENDOR_ID 0x80EE
 #define VBOX_DEVICE_ID 0xCAFE
@@ -94,7 +95,7 @@ static void vbox_set_header(struct vbox_header *header, int size, int req)
 
 void vbox_irq_handler(struct PCI_device *pci)
 {
-    kprintf(KLOG_MSG, "IRQ for %s\n", VBOX_NAME);
+    kprintf(KL_MSG, "IRQ for %s\n", VBOX_NAME);
 }
 
 void vbox_startup(struct PCI_device *pci)
@@ -104,43 +105,43 @@ void vbox_startup(struct PCI_device *pci)
     // MMIO PREFETCH region #2: f0800000..f0804000
     irq_register(pci->irq, (irq_handler_t)vbox_irq_handler, pci);
 
-    vbox_guest_info = kmap(PAGE_SIZE, NULL, 0, VMA_ANON_RW | VMA_RESOLVE);
+    vbox_guest_info = kmap(PAGE_SIZE, NULL, 0, VM_RW | VM_RESOLVE);
     vbox_set_header(&vbox_guest_info->head, sizeof(*vbox_guest_info),
                     VBOX_REQ_GUEST_INFO);
     vbox_guest_info->version = 0x00010003;
     vbox_guest_info->ostype = 0;
     PCI_wr32(pci, 0, 0, mmu_read((size_t)vbox_guest_info));
 
-    vbox_guest_caps = kmap(PAGE_SIZE, NULL, 0, VMA_ANON_RW | VMA_RESOLVE);
+    vbox_guest_caps = kmap(PAGE_SIZE, NULL, 0, VM_RW | VM_RESOLVE);
     vbox_set_header(&vbox_guest_caps->head, sizeof(*vbox_guest_caps),
                     VBOX_REQ_GUEST_CAPS);
     vbox_guest_caps->caps = 1;
     PCI_wr32(pci, 0, 0, mmu_read((size_t)vbox_guest_caps));
 
-    vbox_events = kmap(PAGE_SIZE, NULL, 0, VMA_ANON_RW | VMA_RESOLVE);
+    vbox_events = kmap(PAGE_SIZE, NULL, 0, VM_RW | VM_RESOLVE);
     vbox_set_header(&vbox_events->head, sizeof(*vbox_events), VBOX_REQ_EVENTS);
     vbox_events->events = 0;
     PCI_wr32(pci, 0, 0, mmu_read((size_t)vbox_events));
 
-    vbox_display = kmap(PAGE_SIZE, NULL, 0, VMA_ANON_RW | VMA_RESOLVE);
+    vbox_display = kmap(PAGE_SIZE, NULL, 0, VM_RW | VM_RESOLVE);
     vbox_set_header(&vbox_display->head, sizeof(*vbox_display), VBOX_REQ_DISPLAY);
     vbox_display->eventack = 1;
     PCI_wr32(pci, 0, 0, mmu_read((size_t)vbox_display));
 
-    vbox_mouse = kmap(PAGE_SIZE, NULL, 0, VMA_ANON_RW | VMA_RESOLVE);
+    vbox_mouse = kmap(PAGE_SIZE, NULL, 0, VM_RW | VM_RESOLVE);
     vbox_set_header(&vbox_mouse->head, sizeof(*vbox_mouse), VBOX_REQ_MOUSE);
     vbox_mouse->features = VBOX_MOUSE_ON;
     PCI_wr32(pci, 0, 0, mmu_read((size_t)vbox_mouse));
 
-    vbox_mouse_get = kmap(PAGE_SIZE, NULL, 0, VMA_ANON_RW | VMA_RESOLVE);
+    vbox_mouse_get = kmap(PAGE_SIZE, NULL, 0, VM_RW | VM_RESOLVE);
     vbox_set_header(&vbox_mouse_get->head, sizeof(*vbox_mouse_get),
                     VBOX_REQ_MOUSE_GET);
     vbox_mouse_get->features = VBOX_MOUSE_ON;
     PCI_wr32(pci, 0, 0, mmu_read((size_t)vbox_mouse));
 
     pci->bar[1].mmio = (uint32_t)kmap(pci->bar[1].size, NULL, pci->bar[1].base & ~7,
-                                      VMA_PHYSIQ);
-    kprintf(KLOG_DBG, "%s MMIO mapped at %x\n", VBOX_NAME, pci->bar[1].mmio);
+                                      VM_PHYSIQ | VM_RW);
+    kprintf(KL_MSG, "%s MMIO mapped at %x\n", VBOX_NAME, pci->bar[1].mmio);
 
     vbox_vmmdev = (uint32_t *)pci->bar[1].mmio;
     vbox_vmmdev[3] = 0xFFFFFFFF;
@@ -164,7 +165,6 @@ void vbox_setup()
         pci = PCI_search2(vbox_match_pci_device);
         if (pci == NULL)
             break;
-        // kprintf(0, "Found %s (PCI.%02d.%02d)\n", VBOX_NAME, pci->bus, pci->slot);
         vbox_startup(pci);
     }
 }
